@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nuclear Transport Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+/* Layout idea: a lab bench. Big live cell on the left, instrument panel on the right, readouts and guide below. */
+:root{
+  --bg:#f3f5f7; --panel:#ffffff; --ink:#18212b; --muted:#5b6876; --line:#d9dee4;
+  --accent:#1f5f8b; --accent-ink:#ffffff;
+  --cyto:#eaf1f3; --nuc:#efeaf6; --env:#5a4f86; --npc:#2f2a52; --chrom:#cdbfe3;
+  --nls:#e07b1f; --nes:#8c3fb8; --imp:#2b6fd6; --exp:#13917f; --rangtp:#d43c3c; --rangdp:#8b939c; --small:#7fae3a; --ntf2:#b07d12;
+  --display:"Familjen Grotesk", "Helvetica Neue", Arial, sans-serif;
+  --body:"IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#11161c; --panel:#18202898; --ink:#e6ebf0; --muted:#9aa7b4; --line:#2b3540;
+    --accent:#5aa8de; --accent-ink:#0c1218;
+    --cyto:#16222a; --nuc:#211d30; --env:#a597e0; --npc:#d8d0ff; --chrom:#3a3054;
+    --nls:#f19a45; --nes:#c27ae8; --imp:#5b9bff; --exp:#2fc4ad; --rangtp:#ff6464; --rangdp:#8f99a3; --small:#9ccc5a; --ntf2:#e2b84a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#11161c; --panel:#18202898; --ink:#e6ebf0; --muted:#9aa7b4; --line:#2b3540;
+  --accent:#5aa8de; --accent-ink:#0c1218;
+  --cyto:#16222a; --nuc:#211d30; --env:#a597e0; --npc:#d8d0ff; --chrom:#3a3054;
+  --nls:#f19a45; --nes:#c27ae8; --imp:#5b9bff; --exp:#2fc4ad; --rangtp:#ff6464; --rangdp:#8f99a3; --small:#9ccc5a; --ntf2:#e2b84a;
+  color-scheme: dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:1280px;margin:0 auto;padding:20px 20px 48px;display:grid;gap:18px}
+header{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 16px}
+h1{font-family:var(--display);font-weight:700;font-size:28px;margin:0;letter-spacing:-.01em;text-wrap:balance}
+header p{margin:0;color:var(--muted);max-width:70ch}
+h2{font-family:var(--display);font-size:18px;margin:0 0 8px;text-wrap:balance}
+h3{font-family:var(--display);font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 8px}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+@media (max-width:900px){.main{grid-template-columns:1fr}}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px}
+.stage{padding:0;overflow:hidden}
+#sim{display:block;width:100%;height:auto;cursor:crosshair}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;padding:10px 14px;border-top:1px solid var(--line);font-size:13px;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend canvas{width:22px;height:22px}
+.panel{display:grid;gap:14px;min-width:0}
+select{width:100%;max-width:100%}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+button,select{font:inherit;font-size:14px;border-radius:7px;border:1px solid var(--line);background:var(--bg);color:var(--ink);padding:7px 12px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button:hover{filter:brightness(1.05)}
+button:focus-visible,select:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.slider{display:grid;grid-template-columns:1fr auto;gap:2px 8px;font-size:13.5px}
+.slider input{grid-column:1/-1;width:100%;accent-color:var(--accent)}
+.slider output{font-family:var(--mono);font-variant-numeric:tabular-nums;color:var(--muted)}
+.toggle{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;font-size:13.5px;align-items:start;cursor:pointer}
+.toggle input{margin-top:3px;accent-color:var(--accent)}
+.toggle small{grid-column:2;color:var(--muted);font-size:12px;line-height:1.35}
+.hint{font-size:12px;color:var(--muted);margin:0}
+.leftcol{display:grid;gap:18px;min-width:0}
+.countsgrid{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:24px;align-items:start}
+@media (max-width:900px){.countsgrid{grid-template-columns:1fr}}
+.countsgrid .tiles{margin-top:0}
+#chart{width:100%;height:220px;display:block}
+.chartkey{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);margin-top:6px}
+.chartkey i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:5px}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{padding:4px 6px;border-bottom:1px solid var(--line);text-align:right}
+th:first-child,td:first-child{text-align:left}
+td{font-family:var(--mono);font-variant-numeric:tabular-nums}
+td:first-child{font-family:var(--body)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px;margin-top:12px}
+.tile{border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.tile b{display:block;font-family:var(--mono);font-size:20px;font-variant-numeric:tabular-nums}
+.tile span{font-size:12px;color:var(--muted)}
+#log{list-style:none;margin:10px 0 0;padding:0;font-size:12.5px;color:var(--muted);display:grid;gap:3px;min-height:90px}
+#log li::before{content:"› ";color:var(--accent)}
+.guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.guide p,.guide li{max-width:65ch;font-size:14.5px}
+.guide ol{padding-left:20px;margin:0;display:grid;gap:6px}
+.status{font-family:var(--mono);font-size:12px;color:var(--muted)}
+@media (prefers-reduced-motion: reduce){ *{scroll-behavior:auto} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Nuclear Transport Simulator</h1>
+    <p>Watch importins and exportins carry protein cargo through nuclear pore complexes, powered by the Ran-GTP gradient. Toggle enzymes and drugs to test what makes transport work. Click any molecule to follow it.</p>
+  </header>
+
+  <div class="main">
+    <div class="leftcol">
+    <div class="card stage">
+      <canvas id="sim" width="900" height="560" aria-label="Simulation of a cell with nucleus, nuclear pores and moving transport molecules"></canvas>
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="card">
+      <h2>Where is everything?</h2>
+      <canvas id="chart" aria-label="Percent of each molecule located in the nucleus over time"></canvas>
+      <div class="chartkey">
+        <span><i style="background:var(--nls)"></i>NLS cargo in nucleus</span>
+        <span><i style="background:var(--nes)"></i>NES cargo in nucleus</span>
+        <span><i style="background:var(--rangtp)"></i>Ran-GTP in nucleus</span>
+        <span><i style="background:var(--small)"></i>Small solute in nucleus</span>
+        <span><i style="background:var(--muted)"></i>Dashed: even mixing (nuclear share of cell area)</span>
+      </div>
+    </div>
+    </div>
+
+    <div class="panel">
+      <div class="card">
+        <h3>Run</h3>
+        <div class="row">
+          <button class="primary" id="play">Pause</button>
+          <button id="step">Step</button>
+          <button id="reset">Reset</button>
+        </div>
+        <div class="slider" style="margin-top:12px">
+          <label for="speed">Speed</label><output id="speedOut">4×</output>
+          <input type="range" id="speed" min="1" max="12" value="4">
+        </div>
+        <p class="status" id="clock" style="margin-top:6px">t = 0</p>
+      </div>
+
+      <div class="card">
+        <h3>Experiments (apply live)</h3>
+        <div style="display:grid;gap:10px">
+          <label class="toggle"><input type="checkbox" id="rcc1" checked>RCC1 (Ran-GEF) in nucleus<small>Swaps GDP for GTP on Ran, bound to chromatin.</small></label>
+          <label class="toggle"><input type="checkbox" id="rangap" checked>Ran-GAP in cytoplasm<small>Triggers Ran's GTP hydrolysis, helped by RanBP1.</small></label>
+          <label class="toggle"><input type="checkbox" id="lmb">Add leptomycin B<small>Blocks exportin (CRM1) from binding NES cargo.</small></label>
+          <label class="toggle"><input type="checkbox" id="nlsmut">Mutate the NLS<small>Importin can no longer recognize the cargo.</small></label>
+          <div class="slider">
+            <label for="pores">Nuclear pore complexes</label><output id="poresOut">10</output>
+            <input type="range" id="pores" min="0" max="16" value="10">
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Molecules (apply on reset)</h3>
+        <div style="display:grid;gap:8px" id="counts"></div>
+        <div style="margin-top:10px;display:grid;gap:4px">
+          <label for="start" style="font-size:13.5px">Starting cargo location</label>
+          <select id="start">
+            <option value="mixed">Evenly mixed</option>
+            <option value="wrong">NLS cargo in nucleus, NES cargo in cytoplasm</option>
+            <option value="right">NLS cargo in cytoplasm, NES cargo in nucleus</option>
+          </select>
+        </div>
+        <button id="apply" style="margin-top:12px;width:100%">Reset with these settings</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+      <h2>Counts</h2>
+      <div class="countsgrid">
+      <table>
+        <thead><tr><th>Molecule / complex</th><th>Nucleus</th><th>Cytoplasm</th></tr></thead>
+        <tbody id="table"></tbody>
+      </table>
+      <div>
+      <div class="tiles">
+        <div class="tile"><b id="tImp">0</b><span>imports completed</span></div>
+        <div class="tile"><b id="tExp">0</b><span>exports completed</span></div>
+        <div class="tile"><b id="tGTP">0</b><span>GTPs hydrolyzed (Ran-GAP)</span></div>
+        <div class="tile"><b id="tGEF">0</b><span>GDP→GTP exchanges (RCC1)</span></div>
+        <div class="tile"><b id="tNTF">0</b><span>Ran-GDP deliveries by NTF2</span></div>
+      </div>
+      <ul id="log" aria-live="polite"></ul>
+      </div>
+      </div>
+    </div>
+  <div class="card guide">
+    <div>
+      <h2>How the model works</h2>
+      <p>Proteins larger than about 40 kDa can't slip through the nuclear pore's mesh of FG-repeat proteins. Transport receptors (karyopherins) can, because they bind those FG repeats. Small solutes pass on their own. Free Ran can't cross in this model: it moves only as part of a complex.</p>
+      <p><b>Import:</b> importin binds cargo carrying a nuclear localization signal (NLS) wherever it meets it. Importin carrying cargo can enter the nucleus but can't leave with it. In the nucleus, Ran-GTP binds importin and forces the cargo off. The importin–Ran-GTP complex leaves, and in the cytoplasm Ran-GAP hydrolyzes the GTP, freeing importin to go again.</p>
+      <p><b>Export:</b> exportin binds nuclear export signal (NES) cargo only when it also holds Ran-GTP. That three-part complex exits, Ran-GAP hydrolyzes the GTP, and the cargo is released in the cytoplasm.</p>
+      <p><b>The gradient:</b> RCC1 makes Ran-GTP in the nucleus and Ran-GAP destroys it in the cytoplasm. NTF2 picks up Ran-GDP in the cytoplasm and carries it through the pore. In the nucleus RCC1 swaps GDP for GTP; Ran-GTP doesn't bind NTF2, so NTF2 is released to make another trip. That asymmetry sets the direction of both import and export. The energy comes from GTP hydrolysis.</p>
+    </div>
+    <div>
+      <h2>Things to try</h2>
+      <ol>
+        <li>Run the normal cell until the chart levels off. Do NLS cargo and NES cargo end up above or below the dashed even-mixing line? How does the small solute compare?</li>
+        <li>Set nuclear pores to 0. What still happens and what stops?</li>
+        <li>Turn off RCC1. Predict what happens to the Ran-GTP line first, then to each cargo. Explain the order.</li>
+        <li>With RCC1 off, where does importin + cargo get stuck? Why can't it return to the cytoplasm?</li>
+        <li>Reset with NTF2 at 0. Where does Ran end up, and what happens to import and export?</li>
+        <li>Turn off Ran-GAP instead. Where does importin pile up, and why does import stall?</li>
+        <li>Add leptomycin B. Which cargo is affected? Then try mutating the NLS.</li>
+        <li>Start with cargo in the wrong compartments. Can the cell fix it? Watch the GTP counter: what does sorting cost?</li>
+        <li>Reset with importin at 0, then with 5. How does the number of receptors change the rate of import?</li>
+      </ol>
+      <p class="hint" style="margin-top:12px">Simplifications: molecules move by random diffusion in 2-D; reactions happen on contact with set probabilities; RanBP1 is folded into Ran-GAP, and importin-α/β is one player. Rates are scaled for viewing, not measured values.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+"use strict";
+const W = 900, H = 560, CX = 450, CY = 285, R = 170, MARGIN = 12;
+const PORE_HALF = 15;                  // px half-width of each pore opening
+const ENV_BAND = 5;                    // envelope half-thickness for drawing
+const NUC_AREA = Math.PI * R * R, CELL_AREA = (W - 2*MARGIN) * (H - 2*MARGIN);
+const BASELINE = NUC_AREA / CELL_AREA;
+
+// --- species --------------------------------------------------------------
+// passes: can go through a pore. D: diffusion step SD (px/step).
+const SP = {
+  NLS:{name:"NLS cargo", passes:false, D:3.4},
+  NES:{name:"NES cargo", passes:false, D:3.4},
+  IMP:{name:"Importin", passes:true, D:5.0},
+  EXP:{name:"Exportin", passes:true, D:5.0},
+  RT:{name:"Ran-GTP", passes:false, D:6.0},
+  RD:{name:"Ran-GDP", passes:false, D:6.0},
+  NTF2:{name:"NTF2", passes:true, D:6.0},
+  NR:{name:"NTF2 + Ran-GDP", passes:true, D:6.0},
+  IC:{name:"Importin + cargo", passes:true, dir:"in", D:4.4},
+  IR:{name:"Importin + Ran-GTP", passes:true, D:4.6},
+  ER:{name:"Exportin + Ran-GTP", passes:true, D:4.6},
+  ERC:{name:"Exportin + Ran-GTP + cargo", passes:true, dir:"out", D:4.2},
+  SM:{name:"Small solute", passes:true, D:7.0},
+};
+const TABLE_ORDER = ["NLS","IC","NES","ERC","IMP","IR","EXP","ER","RT","RD","NTF2","NR","SM"];
+
+const RATE = {
+  bind: 0.6, contact: 11,
+  gapFree: 0.03, gapIR: 0.012, gapERC: 0.012,   // per step, in cytoplasm
+  gef: 0.08,                                      // per step, in nucleus
+  erOff: 0.0006, nrOff: 0.0008,                                  // ER spontaneous dissociation
+};
+
+const DEFAULTS = {NLS:35, NES:35, IMP:30, EXP:25, RAN:80, NTF2:40, SM:30};
+const COUNT_LABELS = {NLS:"NLS cargo", NES:"NES cargo", IMP:"Importin", EXP:"Exportin", RAN:"Ran", NTF2:"NTF2", SM:"Small solute"};
+const COUNT_MAX = {NLS:100, NES:100, IMP:60, EXP:60, RAN:160, NTF2:60, SM:80};
+
+// --- state ----------------------------------------------------------------
+let ents = [], nextId = 1, t = 0, running = true, speed = 4;
+let tracked = null, trail = [];
+let stats = {imp:0, exp:0, gtp:0, gef:0, ntf2:0};
+let history = [];
+let poreAngles = [];
+const opts = {rcc1:true, gap:true, lmb:false, nlsmut:false, pores:8};
+const counts = {...DEFAULTS};
+
+const rnd = Math.random;
+function gauss(){ let u=0,v=0; while(!u)u=rnd(); while(!v)v=rnd(); return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v); }
+function inNuc(x,y){ const dx=x-CX, dy=y-CY; return dx*dx+dy*dy < R*R; }
+
+function setPores(n){
+  opts.pores = n; poreAngles = [];
+  for(let i=0;i<n;i++) poreAngles.push(-Math.PI/2 + i*2*Math.PI/n + (n%2?0:Math.PI/n/2));
+}
+function inPore(x,y,widen=1){
+  if(!poreAngles.length) return false;
+  const a = Math.atan2(y-CY, x-CX), half = widen * PORE_HALF / R;
+  for(const p of poreAngles){ let d = Math.abs(a-p) % (2*Math.PI); if(d>Math.PI) d = 2*Math.PI-d; if(d<half) return true; }
+  return false;
+}
+
+function randPos(where){
+  for(let k=0;k<1000;k++){
+    const x = MARGIN+6 + rnd()*(W-2*MARGIN-12), y = MARGIN+6 + rnd()*(H-2*MARGIN-12);
+    const r = Math.hypot(x-CX,y-CY);
+    if(Math.abs(r-R) < 10) continue;
+    if(where==="nuc" && r>R) continue;
+    if(where==="cyto" && r<R) continue;
+    return [x,y];
+  }
+  return [CX,CY];
+}
+function make(type,x,y,ids){ return {type,x,y,a:rnd()*Math.PI*2,ids:ids||{}, nuc:inNuc(x,y)}; }
+function mol(type, where){ const [x,y]=randPos(where); return make(type,x,y,{m:nextId++}); }
+
+function reset(){
+  ents=[]; nextId=1; t=0; stats={imp:0,exp:0,gtp:0,gef:0,ntf2:0}; history=[]; tracked=null; trail=[];
+  const start = document.getElementById("start").value;
+  const nlsWhere = start==="wrong"?"nuc":start==="right"?"cyto":null;
+  const nesWhere = start==="wrong"?"cyto":start==="right"?"nuc":null;
+  for(let i=0;i<counts.NLS;i++) ents.push(mol("NLS", nlsWhere));
+  for(let i=0;i<counts.NES;i++) ents.push(mol("NES", nesWhere));
+  for(let i=0;i<counts.IMP;i++) ents.push(mol("IMP"));
+  for(let i=0;i<counts.EXP;i++) ents.push(mol("EXP"));
+  for(let i=0;i<counts.RAN;i++) ents.push(mol(rnd()<.5?"RT":"RD"));
+  for(let i=0;i<counts.NTF2;i++) ents.push(mol("NTF2"));
+  for(let i=0;i<counts.SM;i++) ents.push(mol("SM"));
+  logEl.innerHTML=""; lastLog={};
+  sample(); updateReadouts();
+}
+
+// --- event log --------------------------------------------------------------
+const logEl = document.getElementById("log");
+let lastLog = {};
+function log(key,msg){
+  const now = performance.now();
+  if(lastLog[key] && now-lastLog[key] < 2500) return;
+  lastLog[key]=now;
+  const li=document.createElement("li"); li.textContent=`t=${t}: ${msg}`;
+  logEl.prepend(li); while(logEl.children.length>6) logEl.lastChild.remove();
+}
+
+// --- dynamics ---------------------------------------------------------------
+function move(e){
+  const D = SP[e.type].D;
+  let nx = e.x + gauss()*D, ny = e.y + gauss()*D;
+  if(nx<MARGIN){nx=2*MARGIN-nx} if(nx>W-MARGIN){nx=2*(W-MARGIN)-nx}
+  if(ny<MARGIN){ny=2*MARGIN-ny} if(ny>H-MARGIN){ny=2*(H-MARGIN)-ny}
+  const wasIn = e.nuc, nowIn = inNuc(nx,ny);
+  if(wasIn!==nowIn){
+    // crossing the envelope: only through a pore, only if allowed
+    const mx=(e.x+nx)/2, my=(e.y+ny)/2;
+    const sp = SP[e.type];
+    if(!(sp.passes && (inPore(nx,ny)||inPore(mx,my)))) return;   // blocked: stay put
+    if(sp.dir==="in" && !nowIn) return;    // importin+cargo can't leave until Ran-GTP releases the cargo
+    if(sp.dir==="out" && nowIn) return;    // export complex can't re-enter
+  }
+  e.x=nx; e.y=ny; e.nuc=nowIn;
+  e.a += gauss()*0.15;
+}
+
+function react(){
+  // compartment enzymes
+  const out=[];
+  for(const e of ents){
+    if(!e.nuc && opts.gap){
+      if(e.type==="RT" && rnd()<RATE.gapFree){ e.type="RD"; stats.gtp++; log("gap","Ran-GAP hydrolyzed free Ran-GTP in the cytoplasm"); }
+      else if(e.type==="IR" && rnd()<RATE.gapIR){
+        e.type="IMP"; const g=make("RD",e.x+4,e.y+4,{m:e.ids.g}); e.ids={m:e.ids.r};
+        out.push(g); stats.gtp++; log("ir","GTP hydrolysis freed importin in the cytoplasm");
+      } else if(e.type==="ERC" && rnd()<RATE.gapERC){
+        const c=make("NES",e.x-4,e.y,{m:e.ids.c}), g=make("RD",e.x+4,e.y+4,{m:e.ids.g});
+        e.type="EXP"; e.ids={m:e.ids.r}; out.push(c,g); stats.gtp++; stats.exp++;
+        log("erc","Export complete: NES cargo released in the cytoplasm");
+      }
+    }
+    if(e.nuc && opts.rcc1 && e.type==="NR" && rnd()<RATE.gef){
+      // RCC1 exchanges GDP for GTP; Ran-GTP doesn't bind NTF2, so NTF2 is released
+      const g=make("RT",e.x+4,e.y,{m:e.ids.g}); e.type="NTF2"; e.ids={m:e.ids.r}; out.push(g);
+      stats.gef++; stats.ntf2++; log("ntf2","NTF2 delivered Ran-GDP; RCC1 made Ran-GTP and released NTF2");
+    }
+    else if(e.type==="NR" && rnd()<RATE.nrOff){
+      const g=make("RD",e.x+4,e.y,{m:e.ids.g}); e.type="NTF2"; e.ids={m:e.ids.r}; out.push(g);
+    }
+    if(e.nuc && opts.rcc1 && e.type==="RD" && rnd()<RATE.gef){ e.type="RT"; stats.gef++; log("gef","RCC1 loaded GTP onto Ran in the nucleus"); }
+    if(e.type==="ER" && rnd()<RATE.erOff){
+      const g=make("RT",e.x+4,e.y,{m:e.ids.g}); e.type="EXP"; e.ids={m:e.ids.r}; out.push(g);
+    }
+  }
+  for(const o of out) ents.push(o);
+
+  // contact reactions via spatial hash
+  const cs = RATE.contact, grid = new Map();
+  const key=(i,j)=>i*1000+j;
+  ents.forEach((e,idx)=>{ const k=key(Math.floor(e.x/cs),Math.floor(e.y/cs)); (grid.get(k)||grid.set(k,[]).get(k)).push(idx); });
+  const dead = new Set(), add=[];
+  for(let i=0;i<ents.length;i++){
+    if(dead.has(i)) continue;
+    const a = ents[i];
+    if(!["IMP","IC","EXP","ER","NTF2"].includes(a.type)) continue;
+    const gi=Math.floor(a.x/cs), gj=Math.floor(a.y/cs);
+    let done=false;
+    for(let di=-1;di<=1&&!done;di++) for(let dj=-1;dj<=1&&!done;dj++){
+      const cell=grid.get(key(gi+di,gj+dj)); if(!cell) continue;
+      for(const j of cell){
+        if(j===i||dead.has(j)) continue;
+        const b=ents[j];
+        if(a.nuc!==b.nuc) continue;
+        const dx=a.x-b.x, dy=a.y-b.y; if(dx*dx+dy*dy>cs*cs) continue;
+        if(rnd()>RATE.bind) continue;
+        if(a.type==="IMP" && b.type==="NLS" && !opts.nlsmut){
+          a.type="IC"; a.ids={r:a.ids.m, c:b.ids.m}; dead.add(j); done=true;
+          log(a.nuc?"icn":"icc", a.nuc?"Importin grabbed NLS cargo (inside the nucleus)":"Importin bound NLS cargo in the cytoplasm"); break;
+        }
+        if(a.type==="IC" && b.type==="RT"){
+          add.push(make("NLS",a.x-5,a.y,{m:a.ids.c})); a.type="IR"; a.ids={r:a.ids.r, g:b.ids.m}; dead.add(j); done=true;
+          if(a.nuc){ stats.imp++; log("rel","Import complete: Ran-GTP released NLS cargo in the nucleus"); }
+          break;
+        }
+        if(a.type==="NTF2" && b.type==="RD"){
+          a.type="NR"; a.ids={r:a.ids.m, g:b.ids.m}; dead.add(j); done=true;
+          if(!a.nuc) log("nrb","NTF2 picked up Ran-GDP in the cytoplasm"); break;
+        }
+        if(a.type==="IMP" && b.type==="RT"){
+          a.type="IR"; a.ids={r:a.ids.m, g:b.ids.m}; dead.add(j); done=true; break;
+        }
+        if(a.type==="EXP" && b.type==="RT"){
+          a.type="ER"; a.ids={r:a.ids.m, g:b.ids.m}; dead.add(j); done=true; break;
+        }
+        if(a.type==="ER" && b.type==="NES" && !opts.lmb){
+          a.type="ERC"; a.ids={r:a.ids.r, g:a.ids.g, c:b.ids.m}; dead.add(j); done=true;
+          log("erb","Exportin + Ran-GTP captured NES cargo"); break;
+        }
+      }
+    }
+  }
+  if(dead.size) ents = ents.filter((_,i)=>!dead.has(i));
+  for(const o of add){ o.nuc=inNuc(o.x,o.y); ents.push(o); }
+}
+
+function step(){
+  for(const e of ents) move(e);
+  react();
+  t++;
+  if(tracked){ const e=findTracked(); if(e){ trail.push([e.x,e.y]); if(trail.length>400) trail.shift(); } }
+  if(t%10===0) sample();
+}
+
+function findTracked(){ for(const e of ents){ for(const v of Object.values(e.ids)) if(v===tracked) return e; } return null; }
+
+// --- measurement ------------------------------------------------------------
+function tally(){
+  const c={}; for(const k in SP) c[k]=[0,0];
+  for(const e of ents) c[e.type][e.nuc?0:1]++;
+  return c;
+}
+function frac(n,tot){ return tot? n/tot : null; }
+function sample(){
+  const c = tally();
+  const nlsN=c.NLS[0]+c.IC[0], nlsT=nlsN+c.NLS[1]+c.IC[1];
+  const nesN=c.NES[0]+c.ERC[0], nesT=nesN+c.NES[1]+c.ERC[1];
+  const rtN=c.RT[0]+c.IR[0]+c.ER[0]+c.ERC[0], rtT=rtN+c.RT[1]+c.IR[1]+c.ER[1]+c.ERC[1];
+  history.push({t, nls:frac(nlsN,nlsT), nes:frac(nesN,nesT), rt:frac(rtN,rtT), sm:frac(c.SM[0],c.SM[0]+c.SM[1])});
+  if(history.length>700) history.shift();
+}
+
+// --- drawing ------------------------------------------------------------------
+const cv = document.getElementById("sim"), ctx = cv.getContext("2d");
+let C = {};
+function readColors(){
+  const s=getComputedStyle(document.documentElement);
+  for(const k of ["bg","ink","muted","line","cyto","nuc","env","npc","chrom","nls","nes","imp","exp","rangtp","rangdp","small","ntf2","accent","panel"]) C[k]=s.getPropertyValue("--"+k).trim();
+}
+function setupCanvas(c,w,h){ const d=window.devicePixelRatio||1; c.width=w*d; c.height=h*d; const x=c.getContext("2d"); x.setTransform(d,0,0,d,0,0); return x; }
+
+// chromatin squiggles (fixed)
+const chromatin=[];
+for(let i=0;i<26;i++){
+  let a=rnd()*Math.PI*2, r=rnd()*(R-30), x=CX+Math.cos(a)*r, y=CY+Math.sin(a)*r, pts=[[x,y]], h=rnd()*Math.PI*2;
+  for(let k=0;k<14;k++){ h+=gauss()*0.6; x+=Math.cos(h)*7; y+=Math.sin(h)*7; if(Math.hypot(x-CX,y-CY)>R-14) break; pts.push([x,y]); }
+  chromatin.push(pts);
+}
+
+function rr(g,x,y,w,h,r){ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); }
+function drawNLS(g,x,y,s=1){ g.fillStyle=C.nls; rr(g,x-5*s,y-5*s,10*s,10*s,2.5*s); g.fill(); g.fillStyle=C.ink; g.fillRect(x+4*s,y-1.2*s,3*s,2.4*s); }
+function drawNES(g,x,y,s=1){ g.fillStyle=C.nes; g.beginPath(); g.moveTo(x,y-6*s); g.lineTo(x+6*s,y); g.lineTo(x,y+6*s); g.lineTo(x-6*s,y); g.closePath(); g.fill(); }
+function drawRan(g,x,y,gtp,s=1){ g.beginPath(); g.arc(x,y,3.6*s,0,Math.PI*2); if(gtp){g.fillStyle=C.rangtp; g.fill();} else {g.fillStyle=C.panel||C.bg; g.fill(); g.lineWidth=1.6*s; g.strokeStyle=C.rangdp; g.stroke();} }
+function drawRec(g,x,y,a,col,s=1){ g.beginPath(); g.arc(x,y,8*s,a+0.75,a+Math.PI*2-0.75); g.lineWidth=3.6*s; g.lineCap="round"; g.strokeStyle=col; g.stroke(); }
+function drawNTF2(g,x,y,a,s=1){ g.save(); g.translate(x,y); g.rotate(a); g.fillStyle=C.ntf2; rr(g,-6*s,-3*s,12*s,6*s,3*s); g.fill(); g.restore(); }
+function drawSmall(g,x,y,s=1){ g.beginPath(); g.arc(x,y,2.3*s,0,Math.PI*2); g.fillStyle=C.small; g.fill(); }
+
+function drawEnt(g,e,s=1){
+  const {x,y,a}=e, ox=Math.cos(a)*9*s, oy=Math.sin(a)*9*s;
+  switch(e.type){
+    case "NLS": drawNLS(g,x,y,s); break;
+    case "NES": drawNES(g,x,y,s); break;
+    case "RT": drawRan(g,x,y,true,s); break;
+    case "RD": drawRan(g,x,y,false,s); break;
+    case "SM": drawSmall(g,x,y,s); break;
+    case "NTF2": drawNTF2(g,x,y,a,s); break;
+    case "NR": drawNTF2(g,x,y,a,s); drawRan(g,x+Math.cos(a+Math.PI/2)*5*s,y+Math.sin(a+Math.PI/2)*5*s,false,s); break;
+    case "IMP": drawRec(g,x,y,a,C.imp,s); break;
+    case "EXP": drawRec(g,x,y,a,C.exp,s); break;
+    case "IC": drawRec(g,x,y,a,C.imp,s); drawNLS(g,x,y,0.75*s); break;
+    case "IR": drawRec(g,x,y,a,C.imp,s); drawRan(g,x,y,true,s); break;
+    case "ER": drawRec(g,x,y,a,C.exp,s); drawRan(g,x,y,true,s); break;
+    case "ERC": drawRec(g,x,y,a,C.exp,s); drawNES(g,x,y,0.7*s); drawRan(g,x+ox,y+oy,true,s); break;
+  }
+}
+
+function draw(){
+  const g=ctx;
+  g.clearRect(0,0,W,H);
+  // cell
+  g.fillStyle=C.cyto; rr(g,MARGIN-6,MARGIN-6,W-2*MARGIN+12,H-2*MARGIN+12,26); g.fill();
+  g.lineWidth=2; g.strokeStyle=C.line; g.stroke();
+  // nucleus
+  g.beginPath(); g.arc(CX,CY,R,0,Math.PI*2); g.fillStyle=C.nuc; g.fill();
+  g.strokeStyle=C.chrom; g.lineWidth=5; g.lineCap="round"; g.lineJoin="round"; g.globalAlpha=.7;
+  for(const p of chromatin){ g.beginPath(); g.moveTo(p[0][0],p[0][1]); for(const q of p) g.lineTo(q[0],q[1]); g.stroke(); }
+  g.globalAlpha=1;
+  // envelope: double membrane, gaps at pores
+  const half = PORE_HALF/R;
+  const gaps = poreAngles.map(p=>[p-half,p+half]).sort((a,b)=>a[0]-b[0]);
+  g.strokeStyle=C.env; g.lineWidth=2.2; g.lineCap="butt";
+  for(const rad of [R-ENV_BAND,R+ENV_BAND]){
+    if(!gaps.length){ g.beginPath(); g.arc(CX,CY,rad,0,Math.PI*2); g.stroke(); continue; }
+    for(let i=0;i<gaps.length;i++){ const s=gaps[i][1], e=gaps[(i+1)%gaps.length][0]+(i===gaps.length-1?Math.PI*2:0); g.beginPath(); g.arc(CX,CY,rad,s,e); g.stroke(); }
+  }
+  // NPCs
+  for(const p of poreAngles){
+    for(const sgn of [-1,1]){
+      const aa=p+sgn*(half+2/R), x=CX+Math.cos(aa)*R, y=CY+Math.sin(aa)*R;
+      g.save(); g.translate(x,y); g.rotate(aa); g.fillStyle=C.npc; rr(g,-9,-3,18,6,3); g.fill(); g.restore();
+    }
+    // FG-repeat mesh
+    g.strokeStyle=C.npc; g.globalAlpha=.35; g.lineWidth=1;
+    for(let k=-1;k<=1;k++){
+      const r1=R+k*4;
+      g.beginPath();
+      for(let s=0;s<=8;s++){ const aa=p-half+2*half*s/8, rr2=r1+Math.sin(s*1.7+t*.05+k)*2; const x=CX+Math.cos(aa)*rr2, y=CY+Math.sin(aa)*rr2; s?g.lineTo(x,y):g.moveTo(x,y); }
+      g.stroke();
+    }
+    g.globalAlpha=1;
+  }
+  // labels
+  g.font="600 12px 'IBM Plex Sans', sans-serif"; g.fillStyle=C.muted; g.textAlign="left";
+  g.fillText("CYTOPLASM", 26, 34);
+  g.fillText(opts.gap?"Ran-GAP active":"Ran-GAP off", 26, 50);
+  g.textAlign="center";
+  g.fillText("NUCLEUS", CX, CY-R+46);
+  g.fillText(opts.rcc1?"RCC1 on chromatin":"RCC1 off", CX, CY-R+62);
+  if(opts.lmb){ g.textAlign="right"; g.fillText("Leptomycin B present", W-26, 34); }
+  if(opts.nlsmut){ g.textAlign="right"; g.fillText("NLS mutated", W-26, 50); }
+  // trail
+  if(tracked && trail.length>1){
+    g.strokeStyle=C.accent; g.globalAlpha=.6; g.lineWidth=1.5; g.beginPath(); g.moveTo(trail[0][0],trail[0][1]);
+    for(const q of trail) g.lineTo(q[0],q[1]); g.stroke(); g.globalAlpha=1;
+  }
+  // molecules (Ran & small first so receptors sit on top)
+  for(const e of ents) if(e.type==="RT"||e.type==="RD"||e.type==="SM") drawEnt(g,e);
+  for(const e of ents) if(!(e.type==="RT"||e.type==="RD"||e.type==="SM")) drawEnt(g,e);
+  if(tracked){
+    const e=findTracked();
+    if(e){ g.beginPath(); g.arc(e.x,e.y,15,0,Math.PI*2); g.strokeStyle=C.accent; g.lineWidth=2; g.stroke();
+      g.font="600 12px 'IBM Plex Sans', sans-serif"; g.fillStyle=C.ink; g.textAlign="left";
+      const lx = e.x+18 > W-200 ? e.x-200 : e.x+18;
+      g.fillText("Following: "+SP[e.type].name+(e.nuc?" (nucleus)":" (cytoplasm)"), lx, e.y-14);
+    }
+  }
+}
+
+// --- chart ------------------------------------------------------------------
+const ch = document.getElementById("chart"); let cg, CW=0, CH=220;
+function sizeChart(){ CW = ch.clientWidth; cg = setupCanvas(ch,CW,CH); }
+function drawChart(){
+  if(!cg) return;
+  const g=cg, L=40, Rt=10, T=10, B=24, w=CW-L-Rt, h=CH-T-B;
+  g.clearRect(0,0,CW,CH);
+  g.font="11px 'IBM Plex Mono', monospace"; g.fillStyle=C.muted; g.strokeStyle=C.line; g.lineWidth=1; g.textAlign="right";
+  for(const v of [0,25,50,75,100]){ const y=T+h-h*v/100; g.beginPath(); g.moveTo(L,y); g.lineTo(L+w,y); g.stroke(); g.fillText(v+"%",L-6,y+4); }
+  // baseline
+  g.setLineDash([4,4]); g.strokeStyle=C.muted; const by=T+h-h*BASELINE; g.beginPath(); g.moveTo(L,by); g.lineTo(L+w,by); g.stroke(); g.setLineDash([]);
+  if(history.length<2) return;
+  const t0=history[0].t, t1=Math.max(history[history.length-1].t, t0+1);
+  const X=tt=>L+w*(tt-t0)/(t1-t0);
+  g.textAlign="left"; g.fillText("t="+t0,L,CH-6); g.textAlign="right"; g.fillText("t="+history[history.length-1].t,L+w,CH-6);
+  for(const [k,col] of [["sm",C.small],["rt",C.rangtp],["nes",C.nes],["nls",C.nls]]){
+    g.strokeStyle=col; g.lineWidth=2.2; g.beginPath(); let started=false, last=null;
+    for(const p of history){ if(p[k]==null) continue; const x=X(p.t), y=T+h-h*p[k]; started?g.lineTo(x,y):g.moveTo(x,y); started=true; last=[x,y]; }
+    g.stroke();
+    if(last){ g.beginPath(); g.arc(last[0],last[1],3.5,0,Math.PI*2); g.fillStyle=col; g.fill(); }
+  }
+}
+
+// --- readouts -----------------------------------------------------------------
+const tbody=document.getElementById("table");
+function updateReadouts(){
+  const c=tally();
+  tbody.innerHTML = TABLE_ORDER.map(k=>`<tr><td>${SP[k].name}</td><td>${c[k][0]}</td><td>${c[k][1]}</td></tr>`).join("");
+  document.getElementById("tImp").textContent=stats.imp;
+  document.getElementById("tExp").textContent=stats.exp;
+  document.getElementById("tGTP").textContent=stats.gtp;
+  document.getElementById("tGEF").textContent=stats.gef;
+  document.getElementById("tNTF").textContent=stats.ntf2;
+  document.getElementById("clock").textContent=`t = ${t} steps · ${ents.length} particles`;
+}
+
+// --- legend -------------------------------------------------------------------
+function buildLegend(){
+  const items=[["NLS","NLS cargo"],["NES","NES cargo"],["IMP","Importin"],["EXP","Exportin (CRM1)"],["RT","Ran-GTP"],["RD","Ran-GDP"],["IC","Importin + cargo"],["ERC","Exportin + Ran-GTP + cargo"],["NTF2","NTF2"],["NR","NTF2 + Ran-GDP"],["SM","Small solute"]];
+  const el=document.getElementById("legend"); el.innerHTML="";
+  for(const [type,label] of items){
+    const sp=document.createElement("span"), c=document.createElement("canvas");
+    const g=setupCanvas(c,22,22); drawEnt(g,{type,x:11,y:11,a:0},0.95);
+    sp.append(c, document.createTextNode(label)); el.append(sp);
+  }
+}
+
+// --- controls -----------------------------------------------------------------
+const $=id=>document.getElementById(id);
+$("play").onclick=()=>{ running=!running; $("play").textContent=running?"Pause":"Play"; };
+$("step").onclick=()=>{ step(); draw(); drawChart(); updateReadouts(); };
+$("reset").onclick=reset;
+$("apply").onclick=reset;
+$("speed").oninput=e=>{ speed=+e.target.value; $("speedOut").textContent=speed+"×"; };
+$("rcc1").onchange=e=>opts.rcc1=e.target.checked;
+$("rangap").onchange=e=>opts.gap=e.target.checked;
+$("lmb").onchange=e=>opts.lmb=e.target.checked;
+$("nlsmut").onchange=e=>opts.nlsmut=e.target.checked;
+$("pores").oninput=e=>{ setPores(+e.target.value); $("poresOut").textContent=e.target.value; };
+const countsEl=$("counts");
+for(const k in DEFAULTS){
+  const d=document.createElement("div"); d.className="slider";
+  d.innerHTML=`<label for="c_${k}">${COUNT_LABELS[k]}</label><output id="o_${k}">${counts[k]}</output><input type="range" id="c_${k}" min="0" max="${COUNT_MAX[k]}" value="${counts[k]}">`;
+  countsEl.append(d);
+  d.querySelector("input").oninput=e=>{ counts[k]=+e.target.value; $("o_"+k).textContent=e.target.value; };
+}
+cv.addEventListener("click",ev=>{
+  const r=cv.getBoundingClientRect(), x=(ev.clientX-r.left)*W/r.width, y=(ev.clientY-r.top)*H/r.height;
+  let best=null, bd=18*18;
+  for(const e of ents){ const d=(e.x-x)**2+(e.y-y)**2; if(d<bd){bd=d;best=e;} }
+  if(best){ const ids=best.ids; tracked = ids.c ?? ids.m ?? ids.r; trail=[]; } else { tracked=null; trail=[]; }
+  draw();
+});
+
+// --- loop ---------------------------------------------------------------------
+const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+if(reduce){ running=false; $("play").textContent="Play"; }
+let frame=0;
+function loop(){
+  if(frame%60===0) readColors();
+  if(running){ for(let i=0;i<speed;i++) step(); }
+  draw();
+  if(frame%6===0){ drawChart(); updateReadouts(); }
+  frame++;
+  requestAnimationFrame(loop);
+}
+
+ctxInit();
+function ctxInit(){
+  const d=window.devicePixelRatio||1; cv.width=W*d; cv.height=H*d; ctx.setTransform(d,0,0,d,0,0);
+  readColors(); setPores(10); buildLegend(); sizeChart(); reset();
+  // warm up so the page opens in a working state
+  for(let i=0;i<1500;i++) step();
+  window.addEventListener("resize",()=>{ sizeChart(); drawChart(); });
+  const mo=new MutationObserver(()=>{ readColors(); buildLegend(); });
+  mo.observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+  requestAnimationFrame(loop);
+}
+})();
+</script>
+</body>
+</html>
