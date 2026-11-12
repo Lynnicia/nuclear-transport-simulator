@@ -35,4 +35,4 @@ Molecules diffuse in 2-D and react on contact with set probabilities. Reaction r
 
 ## Credits
 
-Simulation built with Claude (Anthropic), Opus 5.5 model, 2026. The biological model was reviewed and refined by the author. Inspired by HHMI BioInteractive's "Membrane Transport" simulation; this project isn't affiliated with or endorsed by HHMI.
+Simulation built with Claude (Anthropic), Opus 5.5 model, 2026. The biological model was reviewed and refined by Lynnicia Massenburg. Inspired by HHMI BioInteractive's "Membrane Transport" simulation; this project isn't affiliated with or endorsed by HHMI.
